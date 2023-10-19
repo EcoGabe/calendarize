@@ -89,7 +89,7 @@ abstract class AbstractController extends ActionController
     public function initializeAction()
     {
         parent::initializeAction();
-        AbstractBookingRequest::setConfigurations(GeneralUtility::trimExplode(',', $this->settings['configuration']));
+        AbstractBookingRequest::setConfigurations(GeneralUtility::trimExplode(',', $this->settings['configuration'] ?? ''));
     }
 
     /**
@@ -110,7 +110,7 @@ abstract class AbstractController extends ActionController
     }
 
     /**
-     * A redirect that have a event included.
+     * A redirect that have an event included.
      */
     protected function eventExtendedRedirect(string $className, string $eventName, array $variables = [])
     {
@@ -154,8 +154,9 @@ abstract class AbstractController extends ActionController
         $actionMethodName = ucfirst($this->request->getControllerActionName());
         $pluginName = $this->request->getPluginName();
         $controllerName = $this->request->getControllerName();
+        $pluginUid = $this->configurationManager->getContentObject()->data['uid'];
 
-        return $controllerName . $pluginName . $actionMethodName;
+        return $controllerName . $pluginName . $actionMethodName . $pluginUid;
     }
 
     /**
@@ -196,7 +197,7 @@ abstract class AbstractController extends ActionController
      */
     protected function checkStaticTemplateIsIncluded()
     {
-        if (!isset($this->settings['dateFormat'])) {
+        if (!isset($this->settings['dateLimitBrowserPrev'])) {
             $this->addFlashMessage(
                 'Basic configuration settings are missing. It seems, that the Static Extension TypoScript is not loaded to your TypoScript configuration. Please add the calendarize TS to your TS settings.',
                 'Configuration Error',

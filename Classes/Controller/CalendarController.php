@@ -57,7 +57,7 @@ class CalendarController extends AbstractCompatibilityController
         if (isset($this->settings['format'])) {
             $this->request->setFormat($this->settings['format']);
         }
-        $this->indexRepository->setIndexTypes(GeneralUtility::trimExplode(',', $this->settings['configuration'], true));
+        $this->indexRepository->setIndexTypes(GeneralUtility::trimExplode(',', $this->settings['configuration'] ?? '', true));
         $additionalSlotArguments = [
             'contentRecord' => $this->configurationManager->getContentObject()->data,
             'settings' => $this->settings,
@@ -90,7 +90,7 @@ class CalendarController extends AbstractCompatibilityController
         }
         if ($this->request->hasArgument('event') && 'detailAction' === $this->actionMethodName) {
             // default configuration
-            $configurationName = $this->settings['configuration'];
+            $configurationName = $this->settings['configuration'] ?? '';
             // configuration overwritten by argument?
             if ($this->request->hasArgument('extensionConfiguration')) {
                 $configurationName = $this->request->getArgument('extensionConfiguration');
@@ -289,7 +289,7 @@ class CalendarController extends AbstractCompatibilityController
             return 'Invalid object';
         }
 
-        $limitEvents = (int)$this->settings['shortcutLimitEvents'];
+        $limitEvents = (int)($this->settings['shortcutLimitEvents'] ?? 1);
 
         $fetchEvent = $this->indexRepository->findByEventTraversing($event, true, false, $limitEvents);
         if (\count($fetchEvent) <= 0) {
@@ -348,8 +348,11 @@ class CalendarController extends AbstractCompatibilityController
             return $this->return404Page();
         }
 
+        $indices = $this->indexRepository->findYear((int)$date->format('Y'));
+
         $this->eventExtendedAssignMultiple([
-            'indices' => $this->indexRepository->findYear((int)$date->format('Y')),
+            'indices' => $indices,
+            'pagination' => $this->getPagination($indices),
             'date' => $date,
         ], __CLASS__, __FUNCTION__);
     }
@@ -371,8 +374,11 @@ class CalendarController extends AbstractCompatibilityController
             return $this->return404Page();
         }
 
+        $indices = $this->indexRepository->findQuarter((int)$date->format('Y'), $quarter);
+
         $this->eventExtendedAssignMultiple([
-            'indices' => $this->indexRepository->findQuarter((int)$date->format('Y'), $quarter),
+            'indices' => $indices,
+            'pagination' => $this->getPagination($indices),
             'date' => $date,
             'quarter' => $quarter,
         ], __CLASS__, __FUNCTION__);
@@ -400,11 +406,14 @@ class CalendarController extends AbstractCompatibilityController
             return $this->return404Page();
         }
 
+        $indices = $this->indexRepository->findMonth((int)$date->format('Y'), (int)$date->format('n'));
+
         $this->eventExtendedAssignMultiple([
             'date' => $date,
             'selectDay' => $useCurrentDate,
             'ignoreSelectedDay' => !$useCurrentDate,
-            'indices' => $this->indexRepository->findMonth((int)$date->format('Y'), (int)$date->format('n')),
+            'indices' => $indices,
+            'pagination' => $this->getPagination($indices),
         ], __CLASS__, __FUNCTION__);
     }
 
@@ -425,7 +434,7 @@ class CalendarController extends AbstractCompatibilityController
         if (null === $week) {
             $week = (int)$now->format('W');
         }
-        $weekStart = (int)$this->settings['weekStart'];
+        $weekStart = (int)($this->settings['weekStart'] ?? 1);
         $firstDay = DateTimeUtility::convertWeekYear2DayMonthYear($week, $year, $weekStart);
 
         if ($this->isDateOutOfTypoScriptConfiguration($firstDay)) {
@@ -442,9 +451,12 @@ class CalendarController extends AbstractCompatibilityController
             '+6 days' => 1,
         ];
 
+        $indices = $this->indexRepository->findWeek($year, $week, $weekStart);
+
         $this->eventExtendedAssignMultiple([
             'firstDay' => $firstDay,
-            'indices' => $this->indexRepository->findWeek($year, $week, $weekStart),
+            'indices' => $indices,
+            'pagination' => $this->getPagination($indices),
             'weekConfiguration' => $weekConfiguration,
         ], __CLASS__, __FUNCTION__);
     }
@@ -473,8 +485,11 @@ class CalendarController extends AbstractCompatibilityController
         $next = clone $date;
         $next->modify('+1 day');
 
+        $indices = $this->indexRepository->findDay((int)$date->format('Y'), (int)$date->format('n'), (int)$date->format('j'));
+
         $this->eventExtendedAssignMultiple([
-            'indices' => $this->indexRepository->findDay((int)$date->format('Y'), (int)$date->format('n'), (int)$date->format('j')),
+            'indices' => $indices,
+            'pagination' => $this->getPagination($indices),
             'today' => $date,
             'previous' => $previous,
             'next' => $next,
@@ -528,7 +543,7 @@ class CalendarController extends AbstractCompatibilityController
             $metaTagManagerRegistry->getManagerForProperty('og:description')->addProperty('og:description', $event->getAbstract());
 
             $images = $event->getImages();
-            if ($images[0]) {
+            if (isset($images[0])) {
                 $imageService = GeneralUtility::makeInstance(ImageService::class);
                 $processingInstructions = ['minWidth' => 600, 'minHeight' => 315, 'maxWidth' => 1200, 'maxHeight' => 630];
                 $processedImage = $imageService->applyProcessingInstructions($images[0]->getOriginalResource(), $processingInstructions);
@@ -609,7 +624,7 @@ class CalendarController extends AbstractCompatibilityController
             $this->indexRepository->setIndexTypes([$selection['configuration']['uniqueRegisterKey']]);
             $dummyIndex = new Index();
             $dummyIndex->setForeignTable($selection['configuration']['tableName']);
-            $dummyIndex->setForeignUid($selection['uid']);
+            $dummyIndex->setForeignUid((int)$selection['uid']);
 
             $result = $this->indexRepository->findByTraversing($dummyIndex);
             $index = $result->getQuery()->setLimit(1)->execute()->getFirst();
@@ -656,20 +671,20 @@ class CalendarController extends AbstractCompatibilityController
         $this->checkWrongDateOrder($startDate, $endDate);
         if ($startDate || $endDate || !empty($customSearch)) {
             $searchMode = true;
-            $limit = isset($this->settings['limit']) ? (int)$this->settings['limit'] : 0;
+            $limit = (int)($this->settings['limit'] ?? 0);
             $indices = $this->indexRepository->findBySearch($startDate, $endDate, $customSearch, $limit);
         } elseif (MathUtility::canBeInterpretedAsInteger($year) && MathUtility::canBeInterpretedAsInteger($month) && MathUtility::canBeInterpretedAsInteger($day)) {
             $indices = $this->indexRepository->findDay((int)$year, (int)$month, (int)$day);
         } elseif (MathUtility::canBeInterpretedAsInteger($year) && MathUtility::canBeInterpretedAsInteger($month)) {
             $indices = $this->indexRepository->findMonth((int)$year, (int)$month);
         } elseif (MathUtility::canBeInterpretedAsInteger($year) && MathUtility::canBeInterpretedAsInteger($week)) {
-            $indices = $this->indexRepository->findWeek((int)$year, (int)$week, (int)$this->settings['weekStart']);
+            $indices = $this->indexRepository->findWeek((int)$year, (int)$week, (int)($this->settings['weekStart'] ?? 1));
         } elseif (MathUtility::canBeInterpretedAsInteger($year)) {
             $indices = $this->indexRepository->findYear((int)$year);
         } else {
             // check if relative dates are enabled
-            if ((bool)$this->settings['useRelativeDate']) {
-                $overrideStartDateRelative = trim($this->settings['overrideStartRelative']);
+            if ($this->settings['useRelativeDate'] ?? false) {
+                $overrideStartDateRelative = trim($this->settings['overrideStartRelative'] ?? '');
                 if ('' === $overrideStartDateRelative) {
                     $overrideStartDateRelative = 'now';
                 }
@@ -680,7 +695,7 @@ class CalendarController extends AbstractCompatibilityController
                 }
                 $overrideStartDate = $relativeDate->getTimestamp();
                 $overrideEndDate = 0;
-                $overrideEndDateRelative = trim($this->settings['overrideEndRelative']);
+                $overrideEndDateRelative = trim($this->settings['overrideEndRelative'] ?? '');
                 if ('' !== $overrideEndDateRelative) {
                     try {
                         $relativeDate->modify($overrideEndDateRelative);
@@ -690,13 +705,13 @@ class CalendarController extends AbstractCompatibilityController
                     }
                 }
             } else {
-                $overrideStartDate = (int)$this->settings['overrideStartdate'];
-                $overrideEndDate = (int)$this->settings['overrideEnddate'];
+                $overrideStartDate = (int)($this->settings['overrideStartdate'] ?? 0);
+                $overrideEndDate = (int)($this->settings['overrideEnddate'] ?? 0);
             }
             $indices = $this->indexRepository->findList(
-                (int)$this->settings['limit'],
-                $this->settings['listStartTime'],
-                (int)$this->settings['listStartTimeOffsetHours'],
+                (int)($this->settings['limit'] ?? 0),
+                ($this->settings['listStartTime'] ?? 0),
+                (int)($this->settings['listStartTimeOffsetHours'] ?? 0),
                 $overrideStartDate,
                 $overrideEndDate
             );
@@ -780,7 +795,7 @@ class CalendarController extends AbstractCompatibilityController
      */
     protected function getCurrentConfigurations()
     {
-        $configurations = GeneralUtility::trimExplode(',', $this->settings['configuration'], true);
+        $configurations = GeneralUtility::trimExplode(',', $this->settings['configuration'] ?? '', true);
         $return = [];
         foreach (Register::getRegister() as $key => $configuration) {
             if (\in_array($key, $configurations, true)) {

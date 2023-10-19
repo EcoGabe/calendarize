@@ -16,6 +16,7 @@ use TYPO3\CMS\Extbase\Persistence\ObjectStorage;
  * PluginConfiguration.
  *
  * @DatabaseTable
+ *
  * @SmartExclude(excludes={"Workspaces"})
  */
 class PluginConfiguration extends AbstractModel
@@ -24,6 +25,7 @@ class PluginConfiguration extends AbstractModel
      * Title.
      *
      * @var string
+     *
      * @DatabaseField("string")
      */
     protected $title;
@@ -32,6 +34,7 @@ class PluginConfiguration extends AbstractModel
      * Model name.
      *
      * @var string
+     *
      * @DatabaseField("string")
      */
     protected $modelName;
@@ -40,6 +43,7 @@ class PluginConfiguration extends AbstractModel
      * Configuration / Element Type / Record Type.
      *
      * @var string
+     *
      * @DatabaseField("string")
      */
     protected $configuration;
@@ -48,6 +52,7 @@ class PluginConfiguration extends AbstractModel
      * Storage PID.
      *
      * @var string
+     *
      * @DatabaseField("string")
      */
     protected $storagePid;
@@ -56,6 +61,7 @@ class PluginConfiguration extends AbstractModel
      * Recursive.
      *
      * @var int
+     *
      * @DatabaseField("int")
      */
     protected $recursive;
@@ -64,6 +70,7 @@ class PluginConfiguration extends AbstractModel
      * Detail PID.
      *
      * @var int
+     *
      * @DatabaseField("int")
      */
     protected $detailPid;
@@ -72,6 +79,7 @@ class PluginConfiguration extends AbstractModel
      * List PID.
      *
      * @var int
+     *
      * @DatabaseField("int")
      */
     protected $listPid;
@@ -80,14 +88,25 @@ class PluginConfiguration extends AbstractModel
      * Year PID.
      *
      * @var int
+     *
      * @DatabaseField("int")
      */
     protected $yearPid;
 
     /**
+     * Quarter PID.
+     *
+     * @var int
+     *
+     * @DatabaseField("int")
+     */
+    protected $quarterPid;
+
+    /**
      * Month PID.
      *
      * @var int
+     *
      * @DatabaseField("int")
      */
     protected $monthPid;
@@ -96,6 +115,7 @@ class PluginConfiguration extends AbstractModel
      * Week PID.
      *
      * @var int
+     *
      * @DatabaseField("int")
      */
     protected $weekPid;
@@ -104,6 +124,7 @@ class PluginConfiguration extends AbstractModel
      * Day PID.
      *
      * @var int
+     *
      * @DatabaseField("int")
      */
     protected $dayPid;
@@ -112,6 +133,7 @@ class PluginConfiguration extends AbstractModel
      * Booking PID.
      *
      * @var int
+     *
      * @DatabaseField("int")
      */
     protected $bookingPid;
@@ -134,7 +156,7 @@ class PluginConfiguration extends AbstractModel
     /**
      * Get title.
      *
-     * @return mixed
+     * @return string
      */
     public function getTitle()
     {
@@ -269,6 +291,26 @@ class PluginConfiguration extends AbstractModel
     public function setYearPid($yearPid)
     {
         $this->yearPid = $yearPid;
+    }
+
+    /**
+     * Get quarter PID.
+     *
+     * @return int
+     */
+    public function getQuarterPid(): int
+    {
+        return $this->quarterPid;
+    }
+
+    /**
+     * Set quarter PID.
+     *
+     * @param int $quarterPid
+     */
+    public function setQuarterPid(int $quarterPid): void
+    {
+        $this->quarterPid = $quarterPid;
     }
 
     /**

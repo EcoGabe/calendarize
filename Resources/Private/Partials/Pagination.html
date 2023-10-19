@@ -3,15 +3,15 @@
 		<f:then>
 			<f:comment>
 				<li class="first">
-					<a href="{f:uri.action(action:actionName, arguments:{currentPage: 1})}" title="{f:translate(key:'pagination.first')}">
-						<i class="material-icons">first_page</i>
-					</a>
+					<f:render section="PaginationLink" arguments="{actionName:actionName, page: 1, title: '{f:translate(key:\'pagination.first\')}', searchMode:searchMode}" contentAs="content">
+						first_page
+					</f:render>
 				</li>
 			</f:comment>
 			<li class="previous">
-				<a href="{f:uri.action(action:actionName, arguments:{currentPage: pagination.previousPageNumber})}" title="{f:translate(key:'pagination.previous')}">
+				<f:render section="PaginationLink" arguments="{actionName:actionName, page: pagination.previousPageNumber, title: '{f:translate(key:\'pagination.previous\')}', searchMode:searchMode}" contentAs="content">
 					{f:translate(key:'widget.pagination.previous', extensionName: 'fluid')}
-				</a>
+				</f:render>
 			</li>
 		</f:then>
 		<f:else>
@@ -25,9 +25,18 @@
 		<li>…</li>
 	</f:if>
 	<f:for each="{pagination.allPageNumbers}" as="page">
-		<li class="{f:if(condition: '{page} == {paginator.currentPageNumber}', then:'current')}">
-			<a href="{f:uri.action(action:actionName, arguments:{currentPage: page})}">{page}</a>
-		</li>
+		<f:if condition="{page} == {paginator.currentPageNumber}">
+			<f:then>
+				<li class="current">{page}</li>
+			</f:then>
+			<f:else>
+				<li>
+					<f:render section="PaginationLink" arguments="{actionName:actionName, page: page, title: page, searchMode:searchMode}" contentAs="content">
+						{page}
+					</f:render>
+				</li>
+			</f:else>
+		</f:if>
 	</f:for>
 	<f:if condition="{pagination.hasMorePages}">
 		<li>…</li>
@@ -35,15 +44,15 @@
 	<f:if condition="{pagination.nextPageNumber} && {pagination.nextPageNumber} <= {pagination.lastPageNumber}">
 		<f:then>
 			<li class="next">
-				<a href="{f:uri.action(action:actionName, arguments:{currentPage: pagination.nextPageNumber})}" title="{f:translate(key:'pagination.next')}">
+				<f:render section="PaginationLink" arguments="{actionName:actionName, page: pagination.nextPageNumber, title: '{f:translate(key:\'pagination.next\')}', searchMode:searchMode}" contentAs="content">
 					{f:translate(key:'widget.pagination.next', extensionName: 'fluid')}
-				</a>
+				</f:render>
 			</li>
 			<f:comment>
 				<li class="last">
-					<a href="{f:uri.action(action:actionName, arguments:{currentPage: pagination.lastPageNumber})}" title="{f:translate(key:'pagination.last')}">
+					<f:render section="PaginationLink" arguments="{actionName:actionName, page: pagination.lastPageNumber, title: '{f:translate(key:\'pagination.last\')}', searchMode:searchMode}" contentAs="content">
 						last
-					</a>
+					</f:render>
 				</li>
 			</f:comment>
 		</f:then>
@@ -55,3 +64,21 @@
 		</f:else>
 	</f:if>
 </ul>
+
+<f:section name="PaginationLink">
+	<f:if condition="{searchMode}">
+		<f:then>
+			<a href="#"
+				 title="{title}"
+				 onclick="if(document.getElementById('calendarizePage')){document.getElementById('calendarizePage').value={page};document.getElementById('calendarizeSearchForm').submit();return false;}">
+				{content}
+			</a>
+		</f:then>
+		<f:else>
+			<a href="{f:uri.action(action:actionName, arguments:{currentPage: page})}"
+				 title="{title}">
+				{content}
+			</a>
+		</f:else>
+	</f:if>
+</f:section>

@@ -8,6 +8,7 @@ Requirements
 
 - Installed extension calendarize
 - Tables from cal (e.g. :code:`tx_cal_*`, ...)
+- TYPO3 v10.4 (v11 is NOT supported)
 
 Migration
 ---------
@@ -89,5 +90,6 @@ Be aware that some things are **not** migrated:
 - TypoScript configurations
 - (Plugins)
 - Some fields and tables (e.g. calendar, locations, attendees, deviations, ...)
+- Deviations
 - Additionally fields by other extensions
 - ...

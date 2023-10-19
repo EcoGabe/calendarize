@@ -43,6 +43,7 @@ class CmsLayout extends AbstractHook
      * @param array $params Parameters to the hook
      *
      * @return string Information about pi1 plugin
+     *
      * @Hook("TYPO3_CONF_VARS|SC_OPTIONS|cms/layout/class.tx_cms_layout.php|list_type_Info|calendarize_calendar")
      */
     public function getExtensionSummary(array $params)
@@ -64,7 +65,7 @@ class CmsLayout extends AbstractHook
 
         $actions = $this->flexFormService->get('switchableControllerActions', 'main');
         $parts = GeneralUtility::trimExplode(';', $actions, true);
-        $parts = array_map(function ($element) {
+        $parts = array_map(static function ($element) {
             $split = explode('->', $element);
 
             return ucfirst($split[1]);

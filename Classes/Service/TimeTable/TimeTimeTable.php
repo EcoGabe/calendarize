@@ -11,11 +11,10 @@ use HDNET\Calendarize\Domain\Model\Configuration;
 use HDNET\Calendarize\Service\RecurrenceService;
 use HDNET\Calendarize\Utility\ConfigurationUtility;
 use HDNET\Calendarize\Utility\DateTimeUtility;
+use HDNET\Calendarize\Utility\HelperUtility;
 use TYPO3\CMS\Core\Messaging\FlashMessage;
-use TYPO3\CMS\Core\Messaging\FlashMessageService;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\MathUtility;
-use TYPO3\CMS\Extbase\Utility\LocalizationUtility;
 
 /**
  * Time service.
@@ -63,7 +62,7 @@ class TimeTimeTable extends AbstractTimeTable
     {
         switch ($configuration->getEndDateDynamic()) {
             case Configuration::END_DYNAMIC_1_DAY:
-                $callback = function ($entry) {
+                $callback = static function ($entry) {
                     if ($entry['start_date'] instanceof \DateTime) {
                         $entry['end_date'] = clone $entry['start_date'];
                         $entry['end_date']->modify('+1 day');
@@ -73,7 +72,7 @@ class TimeTimeTable extends AbstractTimeTable
                 };
                 break;
             case Configuration::END_DYNAMIC_1_WEEK:
-                $callback = function ($entry) {
+                $callback = static function ($entry) {
                     if ($entry['start_date'] instanceof \DateTime) {
                         $entry['end_date'] = clone $entry['start_date'];
                         $entry['end_date']->modify('+1 week');
@@ -83,7 +82,7 @@ class TimeTimeTable extends AbstractTimeTable
                 };
                 break;
             case Configuration::END_DYNAMIC_END_WEEK:
-                $callback = function ($entry) {
+                $callback = static function ($entry) {
                     if ($entry['start_date'] instanceof \DateTime) {
                         $entry['end_date'] = clone $entry['start_date'];
                         $entry['end_date']->modify('monday next week');
@@ -94,7 +93,7 @@ class TimeTimeTable extends AbstractTimeTable
                 };
                 break;
             case Configuration::END_DYNAMIC_END_MONTH:
-                $callback = function ($entry) {
+                $callback = static function ($entry) {
                     if ($entry['start_date'] instanceof \DateTime) {
                         $entry['end_date'] = clone $entry['start_date'];
                         $entry['end_date']->modify('last day of this month');
@@ -104,7 +103,7 @@ class TimeTimeTable extends AbstractTimeTable
                 };
                 break;
             case Configuration::END_DYNAMIC_END_YEAR:
-                $callback = function ($entry) {
+                $callback = static function ($entry) {
                     if ($entry['start_date'] instanceof \DateTime) {
                         $entry['end_date'] = clone $entry['start_date'];
                         $entry['end_date']->setDate((int)$entry['end_date']->format('Y'), 12, 31);
@@ -128,7 +127,7 @@ class TimeTimeTable extends AbstractTimeTable
     }
 
     /**
-     * Validate the base entry, if there are logica mistakes.
+     * Validate the base entry, if there are logical mistakes.
      *
      * @param array $baseEntry
      *
@@ -136,45 +135,40 @@ class TimeTimeTable extends AbstractTimeTable
      */
     protected function validateBaseEntry(array $baseEntry): bool
     {
-        $message = null;
+        // Invalid start date
         if (!($baseEntry['start_date'] instanceof \DateTimeInterface)) {
-            $message = GeneralUtility::makeInstance(
-                FlashMessage::class,
-                'There is no usage for a event configuration without start date?!',
-                'No start date?',
+            HelperUtility::createTranslatedFlashMessage(
+                'flashMessage.missingStartDate.text',
+                'flashMessage.missingStartDate.title',
                 FlashMessage::ERROR
             );
-        } elseif ($baseEntry['end_date'] instanceof \DateTimeInterface && $baseEntry['start_date'] > $baseEntry['end_date']) {
-            $message = GeneralUtility::makeInstance(
-                FlashMessage::class,
-                LocalizationUtility::translate(
-                    'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:wrong.date.message',
-                    'calendarize'
-                ),
-                LocalizationUtility::translate(
-                    'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:wrong.date',
-                    'calendarize'
-                ),
-                FlashMessage::ERROR
-            );
-        } elseif ($baseEntry['end_date'] instanceof \DateTimeInterface && !$baseEntry['all_day'] && !$baseEntry['open_end_time'] && $baseEntry['start_date']->format('d.m.Y') === $baseEntry['end_date']->format('d.m.Y') && $baseEntry['start_time'] % DateTimeUtility::SECONDS_DAY > $baseEntry['end_time'] % DateTimeUtility::SECONDS_DAY && $baseEntry['end_time'] > 0) {
-            $message = GeneralUtility::makeInstance(
-                FlashMessage::class,
-                LocalizationUtility::translate(
-                    'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:wrong.time.message',
-                    'calendarize'
-                ),
-                LocalizationUtility::translate(
-                    'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:wrong.time',
-                    'calendarize'
-                ),
-                FlashMessage::ERROR
-            );
+
+            return false;
         }
-        if ($message) {
-            $flashMessageService = GeneralUtility::makeInstance(FlashMessageService::class);
-            $messageQueue = $flashMessageService->getMessageQueueByIdentifier();
-            $messageQueue->addMessage($message);
+
+        // End date is before start date
+        if ($baseEntry['end_date'] instanceof \DateTimeInterface && $baseEntry['start_date'] > $baseEntry['end_date']) {
+            HelperUtility::createTranslatedFlashMessage(
+                'wrong.date.message',
+                'wrong.date',
+                FlashMessage::ERROR
+            );
+
+            return false;
+        }
+
+        // End date is before start date considering time, all day and open end
+        if (
+            $baseEntry['end_date'] instanceof \DateTimeInterface
+            && !$baseEntry['all_day'] && !$baseEntry['open_end_time']
+            && $baseEntry['start_date']->format('d.m.Y') === $baseEntry['end_date']->format('d.m.Y')
+            && $baseEntry['start_time'] % DateTimeUtility::SECONDS_DAY > $baseEntry['end_time'] % DateTimeUtility::SECONDS_DAY
+        ) {
+            HelperUtility::createTranslatedFlashMessage(
+                'wrong.time.message',
+                'wrong.time',
+                FlashMessage::ERROR
+            );
 
             return false;
         }
@@ -228,15 +222,39 @@ class TimeTimeTable extends AbstractTimeTable
      */
     protected function createNextLoopEntry(array $loopEntry, string $modification): array
     {
-        /** @var $startDate \DateTime */
-        $startDate = clone $loopEntry['start_date'];
-        $startDate->modify($modification);
-        $loopEntry['start_date'] = $startDate;
+        // Time modification
+        if (str_contains($modification, 'minutes') || str_contains($modification, 'hours')) {
+            $startTime = new \DateTime('@' . ($loopEntry['start_time'] ?? 0));
+            $compareTime = new \DateTime('@' . ($loopEntry['start_time'] ?? 0));
+            $startTime->modify($modification);
+            $loopEntry['start_time'] = $startTime->getTimestamp();
 
-        /** @var $endDate \DateTime */
-        $endDate = clone $loopEntry['end_date'];
-        $endDate->modify($modification);
-        $loopEntry['end_date'] = $endDate;
+            $endTime = new \DateTime('@' . ($loopEntry['end_time'] ?? 0));
+            $endTime->modify($modification);
+            $loopEntry['end_time'] = $endTime->getTimestamp();
+
+            if ($startTime->format('Y-m-d') !== $compareTime->format('Y-m-d')) {
+                /** @var $startDate \DateTime */
+                $startDate = clone $loopEntry['start_date'];
+                $startDate->modify('+1 day');
+                $loopEntry['start_date'] = $startDate;
+
+                /** @var $endDate \DateTime */
+                $endDate = clone $loopEntry['end_date'];
+                $endDate->modify('+1 day');
+                $loopEntry['end_date'] = $endDate;
+            }
+        } else {
+            /** @var $startDate \DateTime */
+            $startDate = clone $loopEntry['start_date'];
+            $startDate->modify($modification);
+            $loopEntry['start_date'] = $startDate;
+
+            /** @var $endDate \DateTime */
+            $endDate = clone $loopEntry['end_date'];
+            $endDate->modify($modification);
+            $loopEntry['end_date'] = $endDate;
+        }
 
         return $loopEntry;
     }
@@ -250,8 +268,14 @@ class TimeTimeTable extends AbstractTimeTable
      */
     protected function getFrequencyIncrement(Configuration $configuration)
     {
-        $interval = $configuration->getCounterInterval() <= 1 ? 1 : $configuration->getCounterInterval();
+        $interval = max($configuration->getCounterInterval(), 1);
         switch ($configuration->getFrequency()) {
+            case Configuration::FREQUENCY_MINUTELY:
+                $intervalValue = '+' . $interval . ' minutes';
+                break;
+            case Configuration::FREQUENCY_HOURLY:
+                $intervalValue = '+' . $interval . ' hours';
+                break;
             case Configuration::FREQUENCY_DAILY:
                 $intervalValue = '+' . $interval . ' days';
                 break;
@@ -296,7 +320,7 @@ class TimeTimeTable extends AbstractTimeTable
         $maxLimit = $this->getFrequencyLimitPerItem();
         $lastLoop = $baseEntry;
         $loopEntriesAdded = 0;
-        $intervalCounter = $configuration->getCounterInterval() <= 1 ? 1 : $configuration->getCounterInterval();
+        $intervalCounter = max($configuration->getCounterInterval(), 1);
         for ($i = 0; $loopEntriesAdded < $maxLimit && (0 === $amountCounter || $i < $amountCounter); ++$i) {
             $loopEntry = $lastLoop;
 

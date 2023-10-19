@@ -19,11 +19,14 @@ $custom = [
     ],
     'columns' => [
         'title' => [
+            'exclude' => false,
             'config' => [
                 'eval' => 'trim,required',
             ],
         ],
         'configurations' => [
+            'exclude' => false,
+            'l10n_mode' => 'exclude',
             'config' => [
                 'type' => 'inline',
                 'foreign_table' => 'tx_calendarize_domain_model_configuration',
@@ -34,7 +37,7 @@ $custom = [
         'calendarize_info' => [
             'label' => 'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:tca.information',
             'config' => [
-                'type' => 'user',
+                'type' => 'none',
                 'renderType' => 'calendarizeInfoElement',
                 'parameters' => [
                     'items' => 10,

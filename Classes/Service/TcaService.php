@@ -9,7 +9,6 @@ namespace HDNET\Calendarize\Service;
 
 use HDNET\Calendarize\Domain\Model\Configuration;
 use HDNET\Calendarize\Utility\DateTimeUtility;
-use HDNET\Calendarize\Utility\HelperUtility;
 use HDNET\Calendarize\Utility\TranslateUtility;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
@@ -55,7 +54,7 @@ class TcaService extends AbstractService
     public function eventTitle(array &$params, $object)
     {
         // if record has no title
-        if (!MathUtility::canBeInterpretedAsInteger($params['row']['uid'])) {
+        if (!MathUtility::canBeInterpretedAsInteger($params['row']['uid'] ?? '')) {
             return;
         }
 
@@ -66,11 +65,10 @@ class TcaService extends AbstractService
         $GLOBALS['TCA'][$table]['ctrl']['label_userFunc'] = self::class . '->eventTitle';
 
         // base record
-        $databaseConnection = HelperUtility::getDatabaseConnection($table);
-        $fullRow = $databaseConnection->select(['*'], $table, ['uid' => $params['row']['uid']])->fetch();
+        $fullRow = BackendUtility::getRecordWSOL($table, $params['row']['uid']);
 
         $transPointer = $GLOBALS['TCA'][$table]['ctrl']['transOrigPointerField'] ?? false; // e.g. l10n_parent
-        if ($transPointer && (int)$fullRow[$transPointer] > 0) {
+        if ($transPointer && (int)($fullRow[$transPointer] ?? 0) > 0) {
             return;
         }
 
@@ -86,11 +84,10 @@ class TcaService extends AbstractService
 
         foreach ($configurations as $key => $value) {
             $paramsInternal = [
-                'row' => (array)$databaseConnection->select(
-                    ['*'],
+                'row' => BackendUtility::getRecordWSOL(
                     'tx_calendarize_domain_model_configuration',
-                    ['uid' => $value]
-                )->fetch(),
+                    $value
+                ) ?? [],
                 'title' => '',
             ];
             $this->configurationTitle($paramsInternal, null);
@@ -109,7 +106,7 @@ class TcaService extends AbstractService
     {
         $migrateFields = ['type', 'frequency', 'groups'];
         foreach ($migrateFields as $field) {
-            $row[$field] = \is_array($row[$field]) ? $row[$field][0] : $row[$field];
+            $row[$field] = \is_array($row[$field]) ? array_shift($row[$field]) : $row[$field];
         }
     }
 

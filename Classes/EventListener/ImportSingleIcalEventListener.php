@@ -60,7 +60,8 @@ class ImportSingleIcalEventListener
         $calEvent = $event->getEvent();
         $pid = $event->getPid();
 
-        $eventObj = $this->initializeEventRecord($calEvent->getUid());
+        $importId = \strlen($calEvent->getUid()) <= 100 ? $calEvent->getUid() : md5($calEvent->getUid());
+        $eventObj = $this->initializeEventRecord($importId);
         $this->hydrateEventRecord($eventObj, $calEvent, $pid);
 
         if (null !== $eventObj->getUid() && (int)$eventObj->getUid() > 0) {
@@ -73,7 +74,7 @@ class ImportSingleIcalEventListener
     }
 
     /**
-     * Initializes or gets a event by import id.
+     * Initializes or gets an event by import id.
      *
      * @param string $importId
      *
@@ -101,10 +102,10 @@ class ImportSingleIcalEventListener
     private function hydrateEventRecord(Event $eventObj, ICalEvent $calEvent, int $pid): void
     {
         $eventObj->setPid($pid);
-        $eventObj->setTitle($calEvent->getTitle());
-        $eventObj->setDescription($calEvent->getDescription());
-        $eventObj->setLocation($calEvent->getLocation());
-        $eventObj->setOrganizer($calEvent->getOrganizer());
+        $eventObj->setTitle($calEvent->getTitle() ?? '');
+        $eventObj->setDescription($calEvent->getDescription() ?? '');
+        $eventObj->setLocation($calEvent->getLocation() ?? '');
+        $eventObj->setOrganizer($calEvent->getOrganizer() ?? '');
 
         $importId = $eventObj->getImportId();
 

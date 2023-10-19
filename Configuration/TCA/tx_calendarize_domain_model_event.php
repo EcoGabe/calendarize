@@ -32,6 +32,7 @@ $custom = [
             ],
         ],
         'import_id' => [
+            'displayCond' => 'HIDE_FOR_NON_ADMINS',
             'config' => [
                 'readOnly' => true,
             ],
@@ -100,6 +101,10 @@ $custom = [
         ],
     ],
 ];
+
+foreach (['title', 'abstract', 'slug', 'description'] as $column) {
+    $custom['columns'][$column]['exclude'] = false;
+}
 
 $tca = ArrayUtility::mergeRecursiveDistinct($base, $custom);
 

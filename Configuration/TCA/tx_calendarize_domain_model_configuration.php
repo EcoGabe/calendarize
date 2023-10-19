@@ -24,26 +24,26 @@ $timeType = str_replace(',external_ics_url', '', $timeType);
 $timeType = str_replace(',groups', '', $timeType);
 $timeType = str_replace(
     ',start_date,end_date,end_date_dynamic',
-    ',--palette--;LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:date.duration;date',
+    ',--palette--;;date',
     $timeType
 );
 $timeType = str_replace(
     ',start_time,end_time,all_day,open_end_time',
-    ',--palette--;LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:time;time',
+    ',--palette--;;time',
     $timeType
 );
 $timeType = str_replace(
-    ',till_date,till_days,till_days_past,till_days_relative,counter_amount',
+    ',till_date,till_days,till_days_relative,till_days_past,counter_amount',
     ',--palette--;;termination_condition',
     $timeType
 );
 $timeType = str_replace(
     ',counter_interval,recurrence,day',
-    ',--palette--;LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:frequency_configuration;frequency_configuration',
+    ',--palette--;;frequency_configuration',
     $timeType
 );
 
-$baseConfiguration = '--palette--;LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:base_configuration;base';
+$baseConfiguration = '--palette--;;base';
 $timeType = str_replace(
     'type,handling,state',
     $baseConfiguration,
@@ -69,6 +69,8 @@ $custom = [
             'config' => [
                 'type' => 'select',
                 'renderType' => 'selectSingle',
+                'authMode' => 'explicitDeny',
+                'authMode_enforce' => 'strict',
                 'items' => [
                     [
                         TranslateUtility::getLll('configuration.type.' . Configuration::TYPE_TIME),
@@ -122,7 +124,7 @@ $custom = [
                         Configuration::STATE_DEFAULT,
                     ],
                     [
-                        'Canceled',
+                        'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:configuration.state.canceled',
                         Configuration::STATE_CANCELED,
                     ],
                 ],
@@ -133,7 +135,7 @@ $custom = [
             'config' => [
                 'eval' => 'required,date',
                 'dbType' => 'date',
-                'size' => 6,
+                'size' => 13,
             ],
             'displayCond' => 'FIELD:type:=:' . Configuration::TYPE_TIME,
         ],
@@ -141,7 +143,7 @@ $custom = [
             'config' => [
                 'eval' => 'date',
                 'dbType' => 'date',
-                'size' => 6,
+                'size' => 13,
             ],
             'displayCond' => 'FIELD:type:=:' . Configuration::TYPE_TIME,
         ],
@@ -150,7 +152,7 @@ $custom = [
                 'eval' => 'time,required',
                 'renderType' => 'inputDateTime',
                 'default' => 0,
-                'size' => 4,
+                'size' => 10,
             ],
             'displayCond' => [
                 'AND' => [
@@ -163,8 +165,8 @@ $custom = [
             'config' => [
                 'eval' => 'time',
                 'renderType' => 'inputDateTime',
-                'size' => 4,
                 'default' => 0,
+                'size' => 10,
             ],
             'displayCond' => [
                 'AND' => [
@@ -178,13 +180,13 @@ $custom = [
             'onChange' => 'reload',
             'displayCond' => 'FIELD:type:=:' . Configuration::TYPE_TIME,
             'config' => [
-                'default' => '0',
+                'default' => 0,
             ],
         ],
         'open_end_time' => [
             'onChange' => 'reload',
             'config' => [
-                'default' => '0',
+                'default' => 0,
             ],
             'displayCond' => [
                 'AND' => [
@@ -198,9 +200,9 @@ $custom = [
                 'type' => 'select',
                 'renderType' => 'selectMultipleSideBySide',
                 'foreign_table' => 'tx_calendarize_domain_model_configurationgroup',
-                'minitems' => '1',
+                'minitems' => 1,
                 'size' => 5,
-                'maxitems' => '99',
+                'maxitems' => 99,
             ],
             'displayCond' => 'FIELD:type:=:' . Configuration::TYPE_GROUP,
         ],
@@ -213,6 +215,14 @@ $custom = [
                     [
                         TranslateUtility::getLll('configuration.frequency.' . Configuration::FREQUENCY_NONE),
                         Configuration::FREQUENCY_NONE,
+                    ],
+                    [
+                        TranslateUtility::getLll('configuration.frequency.' . Configuration::FREQUENCY_MINUTELY),
+                        Configuration::FREQUENCY_MINUTELY,
+                    ],
+                    [
+                        TranslateUtility::getLll('configuration.frequency.' . Configuration::FREQUENCY_HOURLY),
+                        Configuration::FREQUENCY_HOURLY,
                     ],
                     [
                         TranslateUtility::getLll('configuration.frequency.' . Configuration::FREQUENCY_DAILY),
@@ -239,6 +249,7 @@ $custom = [
             'config' => [
                 'eval' => 'date',
                 'dbType' => 'date',
+                'size' => 13,
             ],
             'displayCond' => [
                 'AND' => [
@@ -249,27 +260,30 @@ $custom = [
         ],
         'till_days' => [
             'config' => [
-                'eval' => 'num,null',
-                'size' => 5,
+                'eval' => 'int,null',
                 'default' => null,
+                'size' => 10,
+                'range' => [
+                    'lower' => 1,
+                ],
             ],
             'displayCond' => 'FIELD:type:=:' . Configuration::TYPE_TIME,
         ],
         'till_days_relative' => [
             'onChange' => 'reload',
             'config' => [
-                'config' => [
-                    'eval' => 'null',
-                    'default' => null,
-                ],
+                'default' => 0,
             ],
             'displayCond' => 'FIELD:type:=:' . Configuration::TYPE_TIME,
         ],
         'till_days_past' => [
             'config' => [
-                'eval' => 'num,null',
-                'size' => 5,
+                'eval' => 'int,null',
                 'default' => null,
+                'size' => 10,
+                'range' => [
+                    'lower' => 0,
+                ],
             ],
             'displayCond' => [
                 'AND' => [
@@ -281,8 +295,11 @@ $custom = [
         'counter_amount' => [
             'config' => [
                 'eval' => 'int',
-                'size' => 5,
+                'size' => 10,
                 'default' => 0,
+                'range' => [
+                    'lower' => 0,
+                ],
             ],
             'displayCond' => [
                 'AND' => [
@@ -294,8 +311,11 @@ $custom = [
         'counter_interval' => [
             'config' => [
                 'eval' => 'int,required',
-                'size' => 5,
+                'size' => 10,
                 'default' => 1,
+                'range' => [
+                    'lower' => 1,
+                ],
             ],
             'displayCond' => [
                 'AND' => [
@@ -308,29 +328,25 @@ $custom = [
             'displayCond' => 'FIELD:type:=:' . Configuration::TYPE_EXTERNAL,
             'config' => [
                 'eval' => 'trim,required',
+                'renderType' => 'inputLink',
+                'softref' => 'typolink',
+                'fieldControl' => [
+                    'linkPopup' => [
+                        'options' => [
+                            'allowedExtensions' => 'ics',
+                            'blindLinkOptions' => 'folder,mail,page,spec,telephone,tx_calendarize_domain_model_event',
+                            'blindLinkFields' => 'class,target,title',
+                        ],
+                    ],
+                ],
+                'max' => 2048,
             ],
         ],
         'day' => [
             'config' => [
                 'type' => 'select',
-                'renderType' => 'selectSingle',
+                'renderType' => 'selectSingleBox',
                 'items' => [
-                    [
-                        TranslateUtility::getLll('configuration.day.' . Configuration::DAY_SPECIAL_WEEKDAY),
-                        Configuration::DAY_SPECIAL_WEEKDAY,
-                    ],
-                    [
-                        TranslateUtility::getLll('configuration.day.' . Configuration::DAY_SPECIAL_BUSINESS),
-                        Configuration::DAY_SPECIAL_BUSINESS,
-                    ],
-                    [
-                        TranslateUtility::getLll('configuration.day.' . Configuration::DAY_SPECIAL_WORKDAY),
-                        Configuration::DAY_SPECIAL_WORKDAY,
-                    ],
-                    [
-                        TranslateUtility::getLll('configuration.day.' . Configuration::DAY_SPECIAL_WEEKEND),
-                        Configuration::DAY_SPECIAL_WEEKEND,
-                    ],
                     [
                         TranslateUtility::getLll('configuration.day.' . Configuration::DAY_MONDAY),
                         Configuration::DAY_MONDAY,
@@ -359,8 +375,25 @@ $custom = [
                         TranslateUtility::getLll('configuration.day.' . Configuration::DAY_SUNDAY),
                         Configuration::DAY_SUNDAY,
                     ],
+                    [
+                        TranslateUtility::getLll('configuration.day.' . Configuration::DAY_SPECIAL_WEEKDAY),
+                        Configuration::DAY_SPECIAL_WEEKDAY,
+                    ],
+                    [
+                        TranslateUtility::getLll('configuration.day.' . Configuration::DAY_SPECIAL_BUSINESS),
+                        Configuration::DAY_SPECIAL_BUSINESS,
+                    ],
+                    [
+                        TranslateUtility::getLll('configuration.day.' . Configuration::DAY_SPECIAL_WORKDAY),
+                        Configuration::DAY_SPECIAL_WORKDAY,
+                    ],
+                    [
+                        TranslateUtility::getLll('configuration.day.' . Configuration::DAY_SPECIAL_WEEKEND),
+                        Configuration::DAY_SPECIAL_WEEKEND,
+                    ],
                 ],
-                'default' => Configuration::DAY_SPECIAL_WEEKDAY,
+                'default' => Configuration::DAY_NONE,
+                'maxitems' => 7,
             ],
             'displayCond' => [
                 'OR' => [
@@ -452,6 +485,7 @@ $custom = [
                 ],
                 'default' => '',
             ],
+            'displayCond' => 'FIELD:type:=:' . Configuration::TYPE_TIME,
         ],
         'import_id' => [
             'config' => [
@@ -461,23 +495,23 @@ $custom = [
     ],
     'palettes' => [
         'base' => [
-            'canNotCollapse' => 1,
+            'label' => 'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:base_configuration',
             'showitem' => 'type,handling,state',
         ],
         'date' => [
-            'canNotCollapse' => 1,
+            'label' => 'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:date.duration',
             'showitem' => 'start_date,end_date,end_date_dynamic',
         ],
         'time' => [
-            'canNotCollapse' => 1,
+            'label' => 'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:time',
             'showitem' => 'start_time,end_time,open_end_time,--linebreak--,all_day',
         ],
         'termination_condition' => [
-            'canNotCollapse' => 1,
-            'showitem' => 'till_date,till_days,till_days_past,till_days_relative,counter_amount',
+            'label' => 'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:termination_condition',
+            'showitem' => 'till_date,till_days,till_days_relative,till_days_past,--linebreak--,counter_amount',
         ],
         'frequency_configuration' => [
-            'canNotCollapse' => 1,
+            'label' => 'LLL:EXT:calendarize/Resources/Private/Language/locallang.xlf:frequency_configuration',
             'showitem' => 'counter_interval,recurrence,day',
         ],
         'access' => [
@@ -496,6 +530,10 @@ $custom = [
         ],
     ],
 ];
+
+foreach (['start_date', 'end_date', 'start_time', 'end_time', 'all_day', 'open_end_time', 'end_date_dynamic', 'type', 'state', 'handling'] as $column) {
+    $custom['columns'][$column]['exclude'] = false;
+}
 
 $tca = ArrayUtility::mergeRecursiveDistinct($base, $custom);
 unset($tca['types']['1']);

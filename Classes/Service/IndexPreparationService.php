@@ -48,7 +48,7 @@ class IndexPreparationService extends AbstractService
 
         $register = Register::getRegister();
         $fieldName = $register[$configurationKey]['fieldName'] ?? 'calendarize';
-        $configurations = GeneralUtility::intExplode(',', $rawRecord[$fieldName], true);
+        $configurations = GeneralUtility::intExplode(',', $rawRecord[$fieldName] ?? '', true);
 
         $transPointer = $GLOBALS['TCA'][$tableName]['ctrl']['transOrigPointerField'] ?? false; // e.g. l10n_parent
         if ($transPointer && (int)$rawRecord[$transPointer] > 0) {
@@ -84,7 +84,7 @@ class IndexPreparationService extends AbstractService
     {
         $workspace = isset($record['t3ver_wsid']) ? (int)$record['t3ver_wsid'] : 0;
         $origId = isset($record['t3ver_oid']) ? (int)$record['t3ver_oid'] : 0;
-        $neededItems = array_map(function ($item) use ($workspace, $origId, $record) {
+        $neededItems = array_map(static function ($item) use ($workspace, $origId, $record) {
             $item['t3ver_wsid'] = $workspace;
             // Set relation to the original record
             if ($workspace) {
@@ -132,7 +132,7 @@ class IndexPreparationService extends AbstractService
             }
         }
 
-        if ($languageField && 0 !== (int)$record[$languageField]) {
+        if ($languageField) {
             $language = (int)$record[$languageField];
             foreach (array_keys($neededItems) as $key) {
                 $neededItems[$key]['sys_language_uid'] = $language;

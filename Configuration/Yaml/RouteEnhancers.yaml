@@ -11,7 +11,7 @@ routeEnhancers:
         _controller: 'Calendar::detail'
       - routePath: '/{calendarize_year_label}/{year}'
         _controller: 'Calendar::year'
-      - routePath: '/{calendarize_quarter_label}/{quarter}'
+      - routePath: '/{calendarize_quarter_label}/{year}/{quarter}'
         _controller: 'Calendar::quarter'
       - routePath: '/{calendarize_month_label}/{year}/{month}'
         _controller: 'Calendar::month'
@@ -22,6 +22,10 @@ routeEnhancers:
       - routePath: '/{calendarize_result_page_label}/{currentPage}'
         _controller: 'Calendar::result'
       - routePath: '/{calendarize_page_label}/{currentPage}'
+        _controller: 'Calendar::list'
+      - routePath: '/{calendarize_booking_label}/{index}'
+        _controller: 'Booking::booking'
+      - routePath: '/export.{format}'
         _controller: 'Calendar::list'
 
     defaultController: 'Calendar::list'
@@ -67,6 +71,8 @@ routeEnhancers:
         type: StaticValueMapper
         map:
           'ics': 'ics'
+          'atom': 'atom'
+          'xml': 'xml'
 
       # Localization
       calendarize_event_label:
@@ -117,3 +123,9 @@ routeEnhancers:
         localeMap:
           - locale: 'de_.*'
             value: 'ergebnis-seite'
+      calendarize_booking_label:
+        type: LocaleModifier
+        default: 'booking'
+        localeMap:
+          - locale: 'de_.*'
+            value: 'buchung'

@@ -16,6 +16,7 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
  * Logical configuration group.
  *
  * @DatabaseTable
+ *
  * @SmartExclude(excludes={"Language"})
  */
 class ConfigurationGroup extends AbstractModel
@@ -25,17 +26,19 @@ class ConfigurationGroup extends AbstractModel
      * Title.
      *
      * @var string
+     *
      * @DatabaseField("string")
      */
-    protected $title;
+    protected $title = '';
 
     /**
      * Configurations.
      *
      * @var string
+     *
      * @DatabaseField("string")
      */
-    protected $configurations;
+    protected $configurations = '';
 
     /**
      * Hidden.
@@ -49,7 +52,7 @@ class ConfigurationGroup extends AbstractModel
      *
      * @return string
      */
-    public function getTitle()
+    public function getTitle(): string
     {
         return $this->title;
     }
@@ -59,7 +62,7 @@ class ConfigurationGroup extends AbstractModel
      *
      * @param string $title
      */
-    public function setTitle($title)
+    public function setTitle(string $title): void
     {
         $this->title = $title;
     }
@@ -69,7 +72,7 @@ class ConfigurationGroup extends AbstractModel
      *
      * @return int[]
      */
-    public function getConfigurationIds()
+    public function getConfigurationIds(): array
     {
         return GeneralUtility::intExplode(',', $this->configurations);
     }

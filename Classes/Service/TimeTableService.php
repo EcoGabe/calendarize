@@ -7,7 +7,6 @@ declare(strict_types=1);
 
 namespace HDNET\Calendarize\Service;
 
-use Exception;
 use HDNET\Calendarize\Domain\Model\Configuration;
 use HDNET\Calendarize\Domain\Model\ConfigurationInterface;
 use HDNET\Calendarize\Domain\Repository\ConfigurationRepository;
@@ -118,7 +117,7 @@ class TimeTableService extends AbstractService
             try {
                 $eventStart = $this->getCompleteDate($baseValue, 'start');
                 $eventEnd = $this->getCompleteDate($baseValue, 'end');
-            } catch (Exception $ex) {
+            } catch (\Exception $ex) {
                 continue;
             }
 
@@ -126,7 +125,7 @@ class TimeTableService extends AbstractService
                 try {
                     $selectionStart = $this->getCompleteDate($selectByValue, 'start');
                     $selectionEnd = $this->getCompleteDate($selectByValue, 'end');
-                } catch (Exception $ex) {
+                } catch (\Exception $ex) {
                     continue;
                 }
 
@@ -134,7 +133,7 @@ class TimeTableService extends AbstractService
                 $endIn = ($eventEnd > $selectionStart && $eventEnd <= $selectionEnd);
                 $envelope = ($eventStart < $selectionStart && $eventEnd > $selectionEnd);
 
-                if ($startIn && $endIn || $envelope) {
+                if (($startIn && $endIn) || $envelope) {
                     $timeTableSelection[] = $baseValue;
                     break;
                 }
@@ -158,7 +157,7 @@ class TimeTableService extends AbstractService
             try {
                 $eventStart = $this->getCompleteDate($value, 'start');
                 $eventEnd = $this->getCompleteDate($value, 'end');
-            } catch (Exception $ex) {
+            } catch (\Exception $ex) {
                 continue;
             }
 
@@ -166,7 +165,7 @@ class TimeTableService extends AbstractService
                 try {
                     $removeStart = $this->getCompleteDate($removeValue, 'start');
                     $removeEnd = $this->getCompleteDate($removeValue, 'end');
-                } catch (Exception $ex) {
+                } catch (\Exception $ex) {
                     continue;
                 }
 
@@ -190,14 +189,14 @@ class TimeTableService extends AbstractService
      * @param array  $record
      * @param string $position
      *
-     * @throws Exception
-     *
      * @return \DateTime
+     *
+     * @throws \Exception
      */
     protected function getCompleteDate(array $record, $position)
     {
         if (!($record[$position . '_date'] instanceof \DateTimeInterface)) {
-            throw new Exception('no valid record', 1236781);
+            throw new \Exception('no valid record', 1236781);
         }
         /** @var \DateTime $base */
         $base = clone $record[$position . '_date'];
@@ -220,9 +219,9 @@ class TimeTableService extends AbstractService
      *
      * @param Configuration $configuration
      *
-     * @throws Exception
-     *
      * @return AbstractTimeTable
+     *
+     * @throws \Exception
      */
     protected function buildConfigurationHandler(Configuration $configuration): AbstractTimeTable
     {

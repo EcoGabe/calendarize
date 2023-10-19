@@ -9,17 +9,22 @@ namespace HDNET\Calendarize\Updates;
 
 use HDNET\Autoloader\Annotation\SignalClass;
 use HDNET\Autoloader\Annotation\SignalName;
+use HDNET\Calendarize\Domain\Model\ConfigurationInterface;
 use HDNET\Calendarize\Service\IndexerService;
 use HDNET\Calendarize\Utility\HelperUtility;
-use TYPO3\CMS\Core\Database\Connection;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
+use Symfony\Component\Console\Output\OutputInterface;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Expression\CompositeExpression;
 use TYPO3\CMS\Core\Database\Query\Expression\ExpressionBuilder;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\Database\Query\Restriction\QueryRestrictionInterface;
+use TYPO3\CMS\Core\Information\Typo3Version;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\SignalSlot\Dispatcher;
+use TYPO3\CMS\Install\Updates\ChattyInterface;
 use TYPO3\CMS\Install\Updates\DatabaseUpdatedPrerequisite;
 
 /**
@@ -46,8 +51,10 @@ use TYPO3\CMS\Install\Updates\DatabaseUpdatedPrerequisite;
  *    return $variables;
  * }
  */
-class CalMigrationUpdate extends AbstractUpdate
+class CalMigrationUpdate extends AbstractUpdate implements ChattyInterface, LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+
     /**
      * Import prefix.
      */
@@ -83,6 +90,16 @@ class CalMigrationUpdate extends AbstractUpdate
     }
 
     /**
+     * @var OutputInterface
+     */
+    protected $output;
+
+    public function setOutput(OutputInterface $output): void
+    {
+        $this->output = $output;
+    }
+
+    /**
      * Checks whether updates are required.
      *
      * @param string &$description The description for the update
@@ -112,11 +129,27 @@ class CalMigrationUpdate extends AbstractUpdate
      */
     public function executeUpdate(): bool
     {
+        if (\PHP_VERSION_ID >= 80000 || GeneralUtility::makeInstance(Typo3Version::class)->getMajorVersion() > 10) {
+            $this->output->writeln(
+                'The Cal migration wizard does not TYPO3 >= 11 and not PHP 8. Please use TYPO3 v10.4!'
+            );
+
+            return false;
+        }
+
+        $this->logger->debug('Start CalMigration executeUpdate');
         $calIds = $this->getNonMigratedCalIds();
         if (empty($calIds)) {
+            $this->output->writeln('No non-migrated cal entries found!');
+
             return true;
         }
+        $this->output->writeln(
+            'Start importing cals (count: ' . \count($calIds) . ') ...'
+        );
         $dbQueries = [];
+
+        $this->logger->debug('Start executeUpdate for cals: ', $calIds);
 
         /**
          * @var bool
@@ -135,6 +168,12 @@ class CalMigrationUpdate extends AbstractUpdate
             $this->performLinkEventToCategory($calIds, $dbQueries, $customMessages);
         }
         $this->performLinkEventToConfigurationGroup($calIds, $dbQueries, $customMessages);
+        $this->performSingleException($dbQueries, $customMessages);
+
+        $indexer = GeneralUtility::makeInstance(IndexerService::class);
+        $indexer->reindexAll();
+
+        $this->finalMessage($calIds);
 
         return true;
     }
@@ -157,7 +196,7 @@ class CalMigrationUpdate extends AbstractUpdate
                 $q->expr()->eq('tablenames', $q->createNamedParameter('tx_cal_event')),
                 $q->expr()->eq('fieldname', $q->createNamedParameter('category_id'))
             )
-            ->execute()->fetchAssociative();
+            ->execute()->fetch();
 
         return (int)$count['COUNT(*)'] > 0;
     }
@@ -173,6 +212,7 @@ class CalMigrationUpdate extends AbstractUpdate
      */
     public function performCalEventUpdate($calIds, array &$dbQueries, &$customMessages)
     {
+        $this->logger->debug('Start performCalEventUpdate');
         $table = 'tx_cal_event';
         $q = $this->getQueryBuilder($table);
 
@@ -190,7 +230,7 @@ class CalMigrationUpdate extends AbstractUpdate
         $events = $q->select('*')
             ->from($table)
             ->where(
-                $q->expr()->in('uid', $q->createNamedParameter($calIds, Connection::PARAM_INT_ARRAY))
+                $q->expr()->in('uid', array_map('intval', $calIds))
             )
             ->orderBy('l18n_parent')
             ->execute()->fetchAll();
@@ -240,7 +280,7 @@ class CalMigrationUpdate extends AbstractUpdate
             $db = HelperUtility::getDatabaseConnection($variables['table']);
             $q = $db->createQueryBuilder();
             $q->insert($variables['table'])->values($variables['calendarizeEventRecord']);
-            $dbQueries[] = $q->getSQL();
+            $dbQueries[] = HelperUtility::queryWithParams($q);
 
             $q->execute();
 
@@ -254,10 +294,8 @@ class CalMigrationUpdate extends AbstractUpdate
 
             $dispatcher = self::getSignalSlotDispatcher();
             $dispatcher->dispatch(__CLASS__, __FUNCTION__ . 'PostInsert', $variablesPostInsert);
+            $this->logger->debug('after performCalEventUpdatePostInsert: ' . $variablesPostInsert['event']['uid'] . ' dbQueries: ' . print_r($variablesPostInsert['dbQueries'], true));
         }
-
-        $indexer = GeneralUtility::makeInstance(IndexerService::class);
-        $indexer->reindexAll();
 
         return true;
     }
@@ -273,6 +311,7 @@ class CalMigrationUpdate extends AbstractUpdate
      */
     public function performExceptionEventUpdate($calIds, &$dbQueries, &$customMessages)
     {
+        $this->logger->debug('Start performExceptionEventUpdate');
         $table = 'tx_cal_exception_event_group';
         // ConfigurationGroup für jede ExceptionGroup
 
@@ -287,7 +326,7 @@ class CalMigrationUpdate extends AbstractUpdate
         $q->select('*')->from($variables['table']);
 
         $selectResults = $q->execute()->fetchAll();
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
         foreach ($selectResults as $selectResult) {
             $group = [
@@ -301,14 +340,75 @@ class CalMigrationUpdate extends AbstractUpdate
                 'import_id' => self::IMPORT_PREFIX . $selectResult['uid'],
             ];
 
+            $this->output->writeln(
+                'Start exception event group ' . $variables['table']
+                . ' (import_id ' . $group['import_id'] . '/pid' . $group['pid'] . ') ...'
+            );
             $q = $this->getQueryBuilder($table);
             $q->insert(self::CONFIGURATION_GROUP_TABLE)->values($group);
-            $dbQueries[] = $q->getSQL();
+            $dbQueries[] = HelperUtility::queryWithParams($q);
 
             $q->execute();
         }
 
         return true;
+    }
+
+    /**
+     * Create configuration for exception events that are directly linked to cal events (not groups).
+     * These events can be identified in the table tx_cal_exception_event_mm where tablenames=tx_cal_exception_event.
+     *
+     * @param $dbQueries
+     * @param $customMessages
+     */
+    public function performSingleException(&$dbQueries, &$customMessages): void
+    {
+        $this->logger->debug('Start performSingleException');
+        $this->output->writeln('Start performSingleException');
+
+        $exceptionTable = 'tx_cal_exception_event';
+        $exceptionEventTable = 'tx_cal_exception_event_mm';
+        $db = HelperUtility::getDatabaseConnection(self::CONFIGURATION_TABLE);
+
+        // Fetch all exception events which are directly linked to cal event
+        // With the join we directly get the cal event id in one query
+        $q = $this->getQueryBuilder($exceptionTable);
+        $q->select($exceptionTable . '.*', 'uid_local')
+            ->from($exceptionTable)
+            ->innerJoin(
+                $exceptionTable,
+                $exceptionEventTable,
+                'mm',
+                $q->expr()->eq('mm.uid_foreign', $q->quoteIdentifier('uid'))
+            )
+            ->where($q->expr()->eq('tablenames', $q->createNamedParameter($exceptionTable)));
+
+        $dbQueries[] = HelperUtility::queryWithParams($q);
+        $selectResults = $q->execute();
+
+        while ($result = $selectResults->fetch()) {
+            // Create a configuration
+            $configuration = $this->getConfigurationFromException($result);
+            $configuration['handling'] = ConfigurationInterface::HANDLING_EXCLUDE;
+
+            // Insert the configuration
+            $q = $this->getQueryBuilder(self::CONFIGURATION_TABLE);
+            $q->insert(self::CONFIGURATION_TABLE)->values($configuration)->execute();
+            $dbQueries[] = HelperUtility::queryWithParams($q);
+            $configurationId = (int)$db->lastInsertId(self::CONFIGURATION_TABLE);
+
+            // Link the configuration
+            $eventImportId = self::IMPORT_PREFIX . (int)$result['uid_local'];
+            $linkResult = $this->addConfigurationIdToEvent($eventImportId, $configurationId, $dbQueries, $customMessages);
+
+            if (!$linkResult) {
+                $this->logger->error('Unable to link configuration {configurationId} (single exception) to event {event}!', [
+                    'configurationId' => $configurationId,
+                    'event' => $eventImportId,
+                    'configuration' => $result,
+                ]);
+            }
+        }
     }
 
     /**
@@ -322,6 +422,8 @@ class CalMigrationUpdate extends AbstractUpdate
      */
     public function performLinkEventToConfigurationGroup($calIds, &$dbQueries, &$customMessages)
     {
+        $this->logger->debug('Start performLinkEventToConfigurationGroup');
+        $this->output->writeln('Start performLinkEventToConfigurationGroup');
         $q = $this->getQueryBuilder(self::CONFIGURATION_GROUP_TABLE);
         $now = new \DateTime();
 
@@ -331,10 +433,12 @@ class CalMigrationUpdate extends AbstractUpdate
             'calIds' => $calIds,
         ];
 
-        $selectResults = $q->select('*')->from($variables['table'])->execute()->fetchAll();
-        $dbQueries[] = $q->getSQL();
+        $configurationGroupResults = $q->select('*')->from($variables['table'])
+            ->where($q->expr()->like('import_id', $q->createNamedParameter(self::IMPORT_PREFIX . '%')))
+            ->execute()->fetchAll();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
-        foreach ($selectResults as $group) {
+        foreach ($configurationGroupResults as $group) {
             $importId = explode(':', $group['import_id']);
             $groupId = (int)$importId[1];
 
@@ -355,7 +459,7 @@ class CalMigrationUpdate extends AbstractUpdate
                     )
                 );
 
-            $dbQueries[] = $q->getSQL();
+            $dbQueries[] = HelperUtility::queryWithParams($q);
             $selectResults = $q->execute()->fetchAll();
 
             foreach ($selectResults as $eventUid) {
@@ -386,6 +490,8 @@ class CalMigrationUpdate extends AbstractUpdate
      */
     public function performSysFileReferenceUpdate($calIds, array &$dbQueries, &$customMessages)
     {
+        $this->logger->debug('Start performSysFileReferenceUpdate');
+        $this->output->writeln('Start performSysFileReferenceUpdate');
         $q = $this->getQueryBuilder('tx_cal_event');
 
         $variables = [
@@ -404,7 +510,7 @@ class CalMigrationUpdate extends AbstractUpdate
             ->from('sys_file_reference', 'sfr1')
             ->where($selectWhere);
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
         $selectResults = $q->execute()->fetchAll();
 
         $variables = [
@@ -422,10 +528,15 @@ class CalMigrationUpdate extends AbstractUpdate
             $selectResult['fieldname'] = ('image' === $selectResult['fieldname']) ? 'images' : 'downloads';
             unset($selectResult['uid_foreign'], $selectResult['uid']);
 
+            $this->output->writeln(
+                'Start migrating ' . $selectResult['tablenames']
+                . ' (import_id' . $selectResult['import_id'] . ') ...'
+            );
+
             $q = $this->getQueryBuilder('sys_file_reference');
             $q->insert('sys_file_reference')->values($selectResult);
 
-            $dbQueries[] = $q->getSQL();
+            $dbQueries[] = HelperUtility::queryWithParams($q);
 
             $q->execute();
         }
@@ -441,12 +552,13 @@ class CalMigrationUpdate extends AbstractUpdate
      */
     public function performLinkEventToCategory($calIds, &$dbQueries, &$customMessages)
     {
+        $this->logger->debug('Start performLinkEventToCategory');
         $table = 'tx_cal_event_category_mm';
 
         $q = $this->getQueryBuilder($table);
 
         $q->select('*')->from($table);
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
         $selectResults = $q->execute()->fetchAll();
 
@@ -475,9 +587,10 @@ class CalMigrationUpdate extends AbstractUpdate
                     'fieldname' => $variables['fieldname'],
                 ];
 
-                $q = $this->getQueryBuilder($table);
-                $q->insert($table)->values($insertValues);
-                $dbQueries[] = $q->getSQL();
+                $catTable = 'sys_category_record_mm';
+                $q = $this->getQueryBuilder($catTable);
+                $q->insert($catTable)->values($insertValues);
+                $dbQueries[] = HelperUtility::queryWithParams($q);
 
                 $q->execute();
             }
@@ -500,6 +613,10 @@ class CalMigrationUpdate extends AbstractUpdate
      */
     public function performLinkEventToSysCategory($calIds, &$dbQueries, &$customMessages)
     {
+        $this->logger->debug('Start performLinkEventToSysCategory');
+        $this->output->writeln(
+            'Start link events to syscategory (count: ' . \count($calIds) . ') ...'
+        );
         $table = 'sys_category_record_mm';
 
         $q = $this->getQueryBuilder($table);
@@ -539,6 +656,11 @@ class CalMigrationUpdate extends AbstractUpdate
                         $q->expr()->eq('fieldname', $q->createNamedParameter('category_id'))
                     )->execute();
             } else {
+                // TODO - log deleted 0 eventUid
+                $this->logger->debug("In performLinkEventToSyscategory but event[uid] is $eventUid and trying to delete ");
+                $this->output->writeln(
+                    "In performLinkEventToSyscategory but event[uid] is $eventUid and eventUidOld is $eventUidOld trying to delete foreign tx_cal_event"
+                );
                 $q->delete($table)
                     ->where(
                         $q->expr()->eq('uid_foreign', $q->createNamedParameter($eventUid, \PDO::PARAM_INT)),
@@ -578,22 +700,21 @@ class CalMigrationUpdate extends AbstractUpdate
         if ($configurationRow) {
             $configurationRow['groups'] = $this->addValueToCsv($configurationRow['groups'], $configuration['groups']);
 
-            unset($configurationRow['uid']);
+            $q = $this->getQueryBuilder(self::CONFIGURATION_TABLE);
+            $q->update(self::CONFIGURATION_TABLE)
+                ->where(
+                    $q->expr()->eq('uid', $q->createNamedParameter((int)$configurationRow['uid'], \PDO::PARAM_INT))
+                )
+                ->set('groups', $configurationRow['groups']);
 
-            $q = $this->getQueryBuilder(self::CONFIGURATION_GROUP_TABLE);
-            $q->update(self::CONFIGURATION_GROUP_TABLE)
-                ->where('uid', $q->createNamedParameter((int)$configuration['uid'], \PDO::PARAM_INT));
-            foreach ($configurationRow as $key => $value) {
-                $q->set($key, $value);
-            }
-
-            $dbQueries[] = $q->getSQL();
+            $dbQueries[] = HelperUtility::queryWithParams($q);
             $results = $q->execute();
         } else {
             $db = HelperUtility::getDatabaseConnection(self::CONFIGURATION_TABLE);
             $q = $db->createQueryBuilder();
             $q->insert(self::CONFIGURATION_TABLE)->values($configuration);
-            $dbQueries[] = $q->getSQL();
+            $dbQueries[] = HelperUtility::queryWithParams($q);
+            $q->execute();
 
             $configurationId = $db->lastInsertId(self::CONFIGURATION_TABLE);
 
@@ -656,7 +777,7 @@ class CalMigrationUpdate extends AbstractUpdate
      * @param array $dbQueries
      * @param array $customMessages
      *
-     * @return array
+     * @return bool
      */
     protected function updateEvent($eventId, $values, &$dbQueries, &$customMessages)
     {
@@ -682,9 +803,9 @@ class CalMigrationUpdate extends AbstractUpdate
 
         unset($values['uid']);
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
-        return $q->execute()->fetchAll();
+        return $q->execute();
     }
 
     /**
@@ -714,9 +835,9 @@ class CalMigrationUpdate extends AbstractUpdate
                 $q->expr()->eq('import_id', $q->createNamedParameter($eventImportId))
             );
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
-        return $q->execute()->fetchAll();
+        return $q->execute()->fetch();
     }
 
     /**
@@ -748,15 +869,15 @@ class CalMigrationUpdate extends AbstractUpdate
             ->from($variables['table'])
             ->where(
                 $q->expr()->andX(
-                    $q->expr()->eq('type', 'group'),
-                    $q->expr()->eq('handling', 'exclude'),
+                    $q->expr()->eq('type', $q->createNamedParameter(ConfigurationInterface::TYPE_GROUP)),
+                    $q->expr()->eq('handling', $q->createNamedParameter(ConfigurationInterface::HANDLING_EXCLUDE)),
                     $q->expr()->in('uid', $variables['event']['calendarize'])
                 )
             );
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
-        return $q->execute()->fetchAll();
+        return $q->execute()->fetch();
     }
 
     /**
@@ -769,6 +890,7 @@ class CalMigrationUpdate extends AbstractUpdate
      */
     protected function getExceptionConfigurationForExceptionGroup($groupId, &$dbQueries)
     {
+        $this->logger->debug('Start getExceptionConfigurationForExceptionGroup');
         $recordIds = [];
         $variables = [
             'table' => 'tx_cal_exception_event_group_mm',
@@ -779,9 +901,11 @@ class CalMigrationUpdate extends AbstractUpdate
 
         $q->select('*')
             ->from($variables['table'])
-            ->where('uid_local', $q->createNamedParameter((int)$groupId, \PDO::PARAM_INT));
+            ->where(
+                $q->expr()->eq('uid_local', $q->createNamedParameter((int)$groupId, \PDO::PARAM_INT))
+            );
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
         $mmResults = $q->execute()->fetchAll();
         foreach ($mmResults as $mmResult) {
@@ -797,28 +921,12 @@ class CalMigrationUpdate extends AbstractUpdate
                     $q->expr()->eq('uid', $q->createNamedParameter((int)$mmResult['uid_foreign'], \PDO::PARAM_INT))
                 );
 
-            $dbQueries[] = $q->getSQL();
+            $dbQueries[] = HelperUtility::queryWithParams($q);
 
             $selectResults = $q->execute()->fetchAll();
 
             foreach ($selectResults as $selectResult) {
-                $configurationRow = [
-                    'pid' => $selectResult['pid'],
-                    'tstamp' => $selectResult['tstamp'],
-                    'crdate' => $selectResult['crdate'],
-                    'type' => 'time',
-                    'handling' => 'include',
-                    'start_date' => (string)$selectResult['start_date'] ?: null,
-                    'end_date' => (string)$selectResult['end_date'] ?: null,
-                    'start_time' => (int)$selectResult['start_time'],
-                    'end_time' => (int)$selectResult['end_time'],
-                    'all_day' => (null === $selectResult['start_time'] && null === $selectResult['end_time']) ? 1 : 0,
-                    'frequency' => $this->mapFrequency($selectResult['freq']),
-                    'till_date' => (string)$selectResult['until'] ?: null,
-                    'counter_amount' => (int)$selectResult['cnt'],
-                    'counter_interval' => (int)$selectResult['interval'],
-                    'import_id' => self::IMPORT_PREFIX . $selectResult['uid'],
-                ];
+                $configurationRow = $this->getConfigurationFromException($selectResult);
 
                 $variables = [
                     'table' => self::CONFIGURATION_TABLE,
@@ -832,7 +940,7 @@ class CalMigrationUpdate extends AbstractUpdate
                 $q = $db->createQueryBuilder();
                 $q->insert($variables['table'])->values($variables['configurationRow']);
 
-                $dbQueries[] = $q->getSQL();
+                $dbQueries[] = HelperUtility::queryWithParams($q);
 
                 $q->execute();
 
@@ -860,11 +968,61 @@ class CalMigrationUpdate extends AbstractUpdate
             'year' => 'yearly',
         ];
 
-        if (!isset($freq[$calFrequency])) {
+        return $freq[$calFrequency] ?? '';
+    }
+
+    /**
+     * Map day of recurrence.
+     *
+     * @param string $calByday
+     *
+     * @return string
+     */
+    protected function mapRecurrenceDay($calByday)
+    {
+        $days = [
+            'mo' => ConfigurationInterface::DAY_MONDAY,
+            'tu' => ConfigurationInterface::DAY_TUESDAY,
+            'we' => ConfigurationInterface::DAY_WEDNESDAY,
+            'th' => ConfigurationInterface::DAY_THURSDAY,
+            'fr' => ConfigurationInterface::DAY_FRIDAY,
+            'sa' => ConfigurationInterface::DAY_SATURDAY,
+            'su' => ConfigurationInterface::DAY_SUNDAY,
+        ];
+        $recurrenceDay = (string)substr($calByday, -2);
+
+        if (empty($calByday) || !\array_key_exists($recurrenceDay, $days)) {
             return '';
         }
 
-        return $freq[$calFrequency];
+        return $days[$recurrenceDay];
+    }
+
+    /**
+     * Map day of recurrence.
+     *
+     * @param string $calByday
+     *
+     * @return string
+     */
+    protected function mapRecurrence($calByday)
+    {
+        $recurrences = [
+            '1' => ConfigurationInterface::RECURRENCE_FIRST,
+            '2' => ConfigurationInterface::RECURRENCE_SECOND,
+            '3' => ConfigurationInterface::RECURRENCE_THIRD,
+            '4' => ConfigurationInterface::RECURRENCE_FOURTH,
+            '5' => ConfigurationInterface::RECURRENCE_FIFTH,
+            '-1' => ConfigurationInterface::RECURRENCE_LAST,
+            '-2' => ConfigurationInterface::RECURRENCE_NEXT_TO_LAST,
+            '-3' => ConfigurationInterface::RECURRENCE_THIRD_LAST,
+        ];
+        $recurrence = (string)substr($calByday, 0, -2); // cut last 2 chars
+        if (empty($calByday) || !\array_key_exists($recurrence, $recurrences)) {
+            return '';
+        }
+
+        return $recurrences[$recurrence];
     }
 
     /**
@@ -884,14 +1042,11 @@ class CalMigrationUpdate extends AbstractUpdate
         ];
 
         $q = $this->getQueryBuilder($variables['table']);
-        $q->getRestrictions()
-            ->removeAll()
-            ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
 
         $q->select('*')
             ->from($variables['table']);
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
         $selectResults = $q->execute()->fetchAll();
 
@@ -915,7 +1070,7 @@ class CalMigrationUpdate extends AbstractUpdate
 
             $q = $this->getQueryBuilder('sys_category');
             $q->insert('sys_category')->values($sysCategoryRecord);
-            $dbQueries[] = $q->getSQL();
+            $dbQueries[] = HelperUtility::queryWithParams($q);
 
             $q->execute();
         }
@@ -932,13 +1087,17 @@ class CalMigrationUpdate extends AbstractUpdate
         $q->select('*')
             ->from($variables['table'])
             ->where(
-                $q->expr()->neq('import_id', $q->createNamedParameter(''))
+                $q->expr()->like('import_id', $q->createNamedParameter(self::IMPORT_PREFIX . '%'))
             );
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
         $selectResults = $q->execute()->fetchAll();
 
         foreach ($selectResults as $sysCategory) {
+            if (empty($sysCategory['parent'])) {
+                // Skip categories without a parent
+                continue;
+            }
             // update parent, because there are just the old uids
             $q = $this->getQueryBuilder('sys_category');
             $q->update('sys_category')
@@ -949,7 +1108,7 @@ class CalMigrationUpdate extends AbstractUpdate
                     $this->getSysCategoryParentUid(self::IMPORT_PREFIX . (int)$sysCategory['parent'])
                 );
 
-            $dbQueries[] = $q->getSQL();
+            $dbQueries[] = HelperUtility::queryWithParams($q);
 
             $q->execute();
         }
@@ -973,11 +1132,11 @@ class CalMigrationUpdate extends AbstractUpdate
                 $q->expr()->eq('import_id', $q->createNamedParameter($importId))
             );
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
         $result = $q->execute()->fetchAll();
 
-        return (int)$result[0]['uid'];
+        return (int)($result[0]['uid'] ?? 0);
     }
 
     /**
@@ -1013,11 +1172,11 @@ class CalMigrationUpdate extends AbstractUpdate
                 $q->expr()->eq('import_id', $q->createNamedParameter($importId))
             );
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
         $result = $q->execute()->fetchAll();
 
-        return (int)$result[0]['uid'];
+        return (int)($result[0]['uid'] ?? 0);
     }
 
     /**
@@ -1050,11 +1209,11 @@ class CalMigrationUpdate extends AbstractUpdate
                 $q->expr()->eq('import_id', $q->createNamedParameter($importId))
             );
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
 
         $result = $q->execute()->fetchAll();
 
-        return (int)$result[0]['uid'];
+        return (int)($result[0]['uid'] ?? 0);
     }
 
     /**
@@ -1080,8 +1239,10 @@ class CalMigrationUpdate extends AbstractUpdate
             'all_day' => $calEventRow['allday'],
             'frequency' => $this->mapFrequency($calEventRow['freq']),
             'till_date' => (string)$calEventRow['until'] ?: null,
-            'counter_amount' => (int)$calEventRow['cnt'],
-            'counter_interval' => (int)$calEventRow['interval'],
+            'counter_amount' => ((int)$calEventRow['cnt'] > 1) ? (int)$calEventRow['cnt'] - 1 : 0,
+            'counter_interval' => (int)($calEventRow['interval'] ?? 1),
+            'recurrence' => $this->mapRecurrence($calEventRow['byday']),
+            'day' => $this->mapRecurrenceDay($calEventRow['byday']),
         ];
 
         $variables = [
@@ -1100,7 +1261,7 @@ class CalMigrationUpdate extends AbstractUpdate
         $q->insert($variables['table'])
             ->values($variables['configurationRow']);
 
-        $dbQueries[] = $q->getSQL();
+        $dbQueries[] = HelperUtility::queryWithParams($q);
         $q->execute();
         $recordId = $db->lastInsertId($variables['table']);
 
@@ -1188,7 +1349,7 @@ class CalMigrationUpdate extends AbstractUpdate
         $connection = $connectionPool->getConnectionByName(ConnectionPool::DEFAULT_CONNECTION_NAME);
         $dbSchema = $connection->getSchemaManager()->createSchema();
 
-        $tableNames = array_map(function ($table) {
+        $tableNames = array_map(static function ($table) {
             return $table->getName();
         }, $dbSchema->getTables());
 
@@ -1245,5 +1406,45 @@ class CalMigrationUpdate extends AbstractUpdate
     public static function getSignalSlotDispatcher(): Dispatcher
     {
         return GeneralUtility::makeInstance(Dispatcher::class);
+    }
+
+    /**
+     * @param array $records
+     */
+    protected function finalMessage(array $records)
+    {
+        $message = \count($records) . ' record(s) in cals. Left cals: ' . \count($this->getNonMigratedCalIds());
+        $this->output->writeln($message);
+        $this->logger->debug($message);
+    }
+
+    /**
+     * @param $selectResult
+     *
+     * @return array
+     */
+    protected function getConfigurationFromException($selectResult): array
+    {
+        $configurationRow = [
+            'pid' => $selectResult['pid'],
+            'tstamp' => $selectResult['tstamp'],
+            'crdate' => $selectResult['crdate'],
+            'type' => ConfigurationInterface::TYPE_TIME,
+            'handling' => ConfigurationInterface::HANDLING_INCLUDE,
+            'start_date' => (string)$selectResult['start_date'] ?: null,
+            'end_date' => (string)$selectResult['end_date'] ?: null,
+            'start_time' => (int)$selectResult['start_time'],
+            'end_time' => (int)$selectResult['end_time'],
+            'all_day' => (null === $selectResult['start_time'] && null === $selectResult['end_time']) ? 1 : 0,
+            'frequency' => $this->mapFrequency($selectResult['freq']),
+            'till_date' => (string)$selectResult['until'] ?: null,
+            'counter_amount' => ((int)$selectResult['cnt'] > 1) ? (int)$selectResult['cnt'] - 1 : 0,
+            'counter_interval' => (int)($selectResult['interval'] ?? 1),
+            'import_id' => self::IMPORT_PREFIX . $selectResult['uid'],
+            'recurrence' => $this->mapRecurrence($selectResult['byday']),
+            'day' => $this->mapRecurrenceDay($selectResult['byday']),
+        ];
+
+        return $configurationRow;
     }
 }
